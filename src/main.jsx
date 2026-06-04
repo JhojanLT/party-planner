@@ -14,6 +14,9 @@ import '@ionic/react/css/text-transformation.css';
 import '@ionic/react/css/flex-utils.css';
 import '@ionic/react/css/display.css';
 
+/* Dark mode de Ionic */
+import '@ionic/react/css/palettes/dark.always.css';
+
 /* Tema personalizado */
 import './theme/variables.css';
 
