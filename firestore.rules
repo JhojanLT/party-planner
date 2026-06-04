@@ -1,0 +1,80 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // ── Perfiles de usuario ──
+    match /users/{uid} {
+      // Cualquier usuario autenticado puede leer perfiles
+      allow read: if isSignedIn();
+
+      // Solo puedes crear/editar/borrar tu propio perfil
+      allow create, update: if request.auth.uid == uid
+                            && request.resource.data.email is string
+                            && request.resource.data.name is string
+                            && request.resource.data.name.size() > 0;
+      allow delete: if request.auth.uid == uid;
+    }
+
+    // ── Eventos (colección pública top-level) ──
+    match /events/{eventId} {
+
+      function eventValid(data) {
+        return data.name is string
+          && data.name.size() > 0
+          && data.name.size() <= 100
+          && data.ticketPrice is number && data.ticketPrice >= 0
+          && data.cost is number && data.cost >= 0
+          && data.date is number
+          && data.revenue is number
+          && data.ownerId is string;
+      }
+
+      // Todos los usuarios autenticados pueden ver los eventos
+      allow read: if isSignedIn();
+
+      // Cualquier usuario autenticado crea eventos, siempre a su propio nombre
+      allow create: if isSignedIn()
+                    && request.resource.data.ownerId == request.auth.uid
+                    && request.resource.data.revenue == 0
+                    && eventValid(request.resource.data);
+
+      // Actualizar:
+      //  - el dueño puede modificar cualquier campo válido
+      //  - cualquier otro usuario SOLO puede subir 'revenue' exactamente en +ticketPrice (comprar)
+      allow update: if isSignedIn() && (
+        (
+          resource.data.ownerId == request.auth.uid
+          && eventValid(request.resource.data)
+          && request.resource.data.ownerId == resource.data.ownerId
+        )
+        || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revenue'])
+          && request.resource.data.revenue == resource.data.revenue + resource.data.ticketPrice
+        )
+      );
+
+      // Solo el dueño puede borrar su evento
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // ── Compras de tickets ──
+    match /purchases/{purchaseId} {
+      // Solo puedes leer tus propias compras
+      allow read: if isSignedIn() && resource.data.buyerId == request.auth.uid;
+
+      // Solo puedes crear/actualizar compras propias
+      allow create, update: if isSignedIn()
+                            && request.resource.data.buyerId == request.auth.uid;
+    }
+
+    // Todo lo demás, denegado
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
